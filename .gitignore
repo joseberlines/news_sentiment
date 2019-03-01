@@ -107,3 +107,6 @@ venv.bak/
 .Rhistory
 .Rproj.user
 *_cache
+
+# Mac
+.DS_Store

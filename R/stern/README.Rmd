@@ -1,0 +1,253 @@
+---
+title: "EDA - www.stern.de"
+author: "Gershom Tripp"
+date: "1 3 2019"
+output: github_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, fig.retina=2)
+```
+
+
+This directory contains scripts and data related to archived article
+content from [www.stern.de](https://www.stern.de/). The dataframes of article
+content, headlines, authors, etc. can be found in 20 CSVs in `cont_df/`, chunked
+by year to be github friendly.
+
+The rest of this document consists of some very basic descriptive statistics.
+
+
+
+
+
+
+
+
+
+
+
+## Libraries
+
+```{r load_libraries, message=FALSE}
+library(tidyverse)
+library(lubridate)
+library(glue)
+theme_set(theme_minimal())
+```
+
+
+
+
+
+
+
+
+
+
+
+## Load and describe data
+
+As is mentioned above, the data is found in 20 CSVs in the `cont_df/` directory.
+Every variable is a character string except `timestamp`, which is a date-time,
+and `categ`, which contains topic categories and is most useful as a factor (categorical variable).
+It's easiest to just import everything as a string and then modify those two
+variable in an extra step.
+
+
+```{r load_data, message=FALSE, cache=TRUE}
+cont_df <- tibble()
+
+for (f in dir("cont_df/")) {
+    cont_df <- bind_rows(cont_df,
+                         read_csv2(glue("cont_df/{f}"), col_types = "cccccccccccc")
+                         )
+}
+
+
+cont_df <- cont_df %>% 
+    mutate(timestamp = as_datetime(timestamp),
+           categ = as_factor(categ)
+           )
+```
+
+
+There are `r nrow(cont_df)` observations and `r ncol(cont_df)` variables. A glimpse
+of the data gives some idea of what each variable looks like.
+
+
+```{r glimpse_data}
+cont_df %>% 
+    arrange(author, author_guest, press_source) %>% 
+    glimpse()
+```
+
+
+
+An explanation of the variables:
+
+* `categ` → Category/topic. Retrieved by scraping URLs by topic and date.
+* `url` → Article URL.
+* `timestamp` → Date and time when article was posted +/- a few seconds.
+* `catchline` → Headline + text used in links to article.
+* `uuid` → Unique identifier (datetime + random string) added after scraping.
+* `headline` → Article headline.
+* `kicker` → A bit of text above the headline that gives some context.
+* `press_source` → Sources other than Stern, I think. Found at bottom of article.
+* `author` → Article author.
+* `author_guest` → Seems to be mostly identical to `author`. Both extracted just to be sure
+* `article_intro` → A short paragraph introducing article.
+* `article` → The article text itself. Paragraphs sparated by newline character.
+
+
+
+
+
+
+
+
+
+
+
+## Descriptive statistics
+
+The **Politik** category dominates with `r nrow(filter(cont_df, categ == "politik"))` 
+articles, followed by **Panorama** (`r nrow(filter(cont_df, categ == "panorama"))`), *Kultur* (`r nrow(filter(cont_df, categ == "kultur"))` ), and **Sport** (`r nrow(filter(cont_df, categ == "sport"))`).
+
+```{r categ_count}
+cont_df %>% 
+    group_by(categ) %>% 
+    count() %>%
+    arrange(desc(n)) %>% 
+    ungroup(categ) %>% 
+    mutate(categ = ordered(categ, levels = categ)) %>% 
+    ggplot(aes(x = categ, y = n)) +
+    geom_bar(stat = "identity", fill = "#000F71") + 
+    coord_flip() + 
+    labs(title = "Total articles per category (2000-2019)",
+         x = "category",
+         y = "count"
+         ) +
+    theme(panel.grid.minor.y = element_blank(),
+          panel.grid.major.y = element_blank()
+          )
+```
+
+
+The next plot shows the change in the number of articles published per year, facetted
+by category. 2019 is excluded as it has barely begun, and the sharp drop off is 
+misleading.
+
+Stern seems to have shifted focus away from some topics and towards others. Brief look at "Panorama"
+reveals that the category actually contains quite a bit of political content,
+so it's more likely that they've simply rebranded some content. Still, there is
+an obvious shift towards more "lifestyle"-centric content.
+
+```{r year_count, fig.height=10, fig.width=8}
+cont_df %>% 
+    mutate(year = year(timestamp)) %>% 
+    filter(year < 2019) %>% 
+    group_by(year, categ) %>% 
+    count() %>%
+    arrange(n) %>% 
+    ggplot(aes(x = year, y = n)) +
+    geom_line(stat = "identity") + 
+    labs(title = "Articles per year (2000-2019),
+         by category",
+         x = "year",
+         y = "count"
+         ) + 
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          axis.text.x = element_text(angle = 45)
+          ) + 
+    scale_x_continuous(breaks = seq(2001, 2019, 6)) + 
+    scale_y_continuous(breaks = seq(0, 7000, 1000)) + 
+    facet_wrap(~categ, ncol = 3)
+```
+
+
+
+The following histogram shows the distribution of characters per article. Most 
+articles have fewer than 12,000 characters. A rug has been added to the plot to
+hightlight the individual articles, particularly those few articles with more 
+than 50,000 characters.
+
+The longest content appears to be similar to a forum, where a question is asked
+and various individuals give their opinions. The shortest content seems to be 
+mostly made up of comics, videos, assorted announcements, etc. Some of it 
+should probably be discarded, but some of it might also be worth investigating.
+
+There's a dramatic but barely discernible spike just below the main distribution
+which likely indicates a particular type of popular content - videos with short, 
+descriptive texts or transcripts, for instance.
+
+
+```{r char_histogram}
+cont_df %>% 
+    mutate(chars = nchar(article)) %>% 
+    filter(!is.na(chars)) %>% 
+    ggplot(aes(x = chars)) + 
+    geom_histogram(binwidth = 200) + 
+    geom_rug() + 
+    scale_x_continuous(breaks = seq(0, 175000, 25000)) + 
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank()
+          ) +
+    labs(title = "Histogram of characters per article",
+         x = "number of characters",
+         y = "count"
+         )
+```
+
+
+Density plots of the characters per articles, broken down by year, are also revealing.
+Content with more than 10,000 characters has been removed, as have the years
+2000 and 2019, which have comparatively few observations.
+
+The main distribution of characters per article seems to have stayed put for 
+the most part, even as total content has grown between 2001 and 2018. The 
+dramatic spike seen in the histogram above first becomes pronounced in 2008. A
+cursory look at content with 150-250 characters confirms that most of that spike
+is due to increased video content. (It would have been trivial to check for video
+content while scraping, but I didn't think of it at the time because it wasn't
+really part of the plan.)
+
+```{r char_histograms, fig.height=10, fig.width=8}
+cont_df %>% 
+    mutate(chars = nchar(article), year = year(timestamp)) %>% 
+    filter(year > 2000, year < 2019, !is.na(chars) & chars < 10000) %>% 
+    ggplot(aes(x = chars)) + 
+    geom_histogram(binwidth = 200) +
+    facet_wrap(~year, ncol = 3) +
+    scale_y_continuous(breaks = seq(0, 1800, 300)) +
+    scale_x_continuous(breaks = seq(0, 10000, 1000)) +
+    theme(panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank()
+          ) + 
+    labs(title = "Densities of characters per article, facetted by year",
+        x = "number of characters", 
+        y = "density"
+        )
+```
+
+
+A scatter plot confirms the overall content increase that we just saw in the 
+histograms. It also looks like there might be two relatively discrete trends 
+(the horizontal split in the points), perhaps corresponding to two types of 
+content, such as longer articles and videos/clickbait.
+
+
+```{r}
+cont_df %>% 
+    mutate(date = date(timestamp)) %>% 
+    filter(date >= as_date("2001-01-01"), date < as_date("2019-01-01")) %>% 
+    group_by(date) %>% 
+    count() %>% 
+    filter(n < 300) %>% 
+    ggplot(aes(x = date, y = n)) + 
+    geom_point(alpha = .25) + 
+    geom_smooth(method = "lm", color = "red")
+```
