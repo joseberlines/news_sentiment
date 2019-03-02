@@ -120,9 +120,65 @@ if (file.exists("spiegel_archive_urls_df.csv.gz")) {
 }
 
 
-# 
-html_raw_list <- vector(mode = "list", length = nrow(urls_df))
+# initialize list to hold raw html (backup) and urls + headlines, etc.
+html_raw_list <- vector(mode = "list", length = nrow(archive_urls_df))
+names(html_raw_list) <- archive_urls_df$url
 
-for (i in 1:nrow()) {
+url_df_list <- vector(mode = "list", length = nrow(archive_urls_df))
+names(url_df_list) <- archive_urls_df$url
+
+
+# get list of user agents
+user_agents <- read_lines("../../user_agents.txt")
+
+
+# initialize variable to keep track of errors
+error_count <- 0
+
+
+for (i in 1:nrow(archive_urls_df)) {
+    
+    # get URL, print status, and send request
+    url <- archive_urls_df[[i, "url"]]
+    
+    cat("\n", glue("Scraping {i} of {nrow(archive_urls_df)}…"))
+    
+    t1 <- Sys.time()
+    req_obj <- GET(url, user_agent(sample(user_agents, 1)))
+    t2 <- Sys.time()
+    
+    
+    # if there is an HTTP error, increment error count and continue to next URL
+    # break with error message if there were 5 consecutive errors
+    if (http_error(req_obj)) {
+        
+        error_count <- error_count + 1
+        
+        if (error_count < 5) {
+            cat(glue("Status {req_obj$status_code}. Continuing to next URL…"))
+            next
+        } else {
+            cat("Status {req_obj$status_code}. Too many errors, breaking…")
+            break
+        }
+    } else {
+        # reset error count if request successful
+        error_count <- 0
+    }
+    
+    
+    ## extract only class `column-wide`, which contains all URLs
+    column_wide <- content(req_obj) %>% 
+        html_node(".column-wide")
+    
+    
+    # save raw html to list in case there are any unforeseen parsing issues
+    html_raw_list[url] <- ifelse(http_error(req_obj),
+                                 req_obj$status_code,
+                                 as.character(column_wide)
+                                 )
+    
+    
+    # 
     
 }
