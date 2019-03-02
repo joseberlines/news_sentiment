@@ -24,6 +24,9 @@ library(lubridate)
 library(glue)
 
 
+source("spiegel_scraper_funcs.R")
+
+
 
 
 
@@ -67,13 +70,13 @@ if (file.exists("spiegel_archive_urls_df.csv.gz")) {
         )
     urls_vid <-
         paste0(
-            "http://www.spiegel.de/nachrichtenarchiv/artikel-",
+            "http://www.spiegel.de/nachrichtenarchiv/videos-",
             format(dates_vid, "%d.%m.%Y"),
             ".html"
         )
     urls_fot <-
         paste0(
-            "http://www.spiegel.de/nachrichtenarchiv/artikel-",
+            "http://www.spiegel.de/nachrichtenarchiv/fotos-",
             format(dates_fot, "%d.%m.%Y"),
             ".html"
         )
@@ -114,19 +117,16 @@ if (file.exists("spiegel_archive_urls_df.csv.gz")) {
        urls_fot)
     
     
-    # write to compressed CSV
-    write_csv(archive_urls_df,
-              gzfile("spiegel_archive_urls_df.csv.gz"))
+    # add logical for scrape status and write to compressed CSV
+    archive_urls_df$scraped <- F
+    
+    write_csv(archive_urls_df, gzfile("spiegel_archive_urls_df.csv.gz"))
 }
 
 
-# initialize list to hold raw html (backup) and urls + headlines, etc.
-html_raw_list <- vector(mode = "list", length = nrow(archive_urls_df))
-names(html_raw_list) <- archive_urls_df$url
-
+# initialize list to hold urls, headlines, etc.
 url_df_list <- vector(mode = "list", length = nrow(archive_urls_df))
 names(url_df_list) <- archive_urls_df$url
-
 
 # get list of user agents
 user_agents <- read_lines("../../user_agents.txt")
@@ -138,10 +138,13 @@ error_count <- 0
 
 for (i in 1:nrow(archive_urls_df)) {
     
+    # continue if already scraped
+    if(archive_urls_df[[i, "scraped"]]) {next}
+    
+    
     # get URL, print status, and send request
     url <- archive_urls_df[[i, "url"]]
-    
-    cat("\n", glue("Scraping {i} of {nrow(archive_urls_df)}…"))
+    cat(glue("Scraping {i} of {nrow(archive_urls_df)}… "))
     
     t1 <- Sys.time()
     req_obj <- GET(url, user_agent(sample(user_agents, 1)))
@@ -155,30 +158,53 @@ for (i in 1:nrow(archive_urls_df)) {
         error_count <- error_count + 1
         
         if (error_count < 5) {
-            cat(glue("Status {req_obj$status_code}. Continuing to next URL…"))
+            cat(glue("Status {req_obj$status_code}. ",
+                     "Request took {round(t2-t1, 2)} seconds. ",
+                     "Continuing to next URL…"
+                     ),
+                "\n"
+                )
             next
         } else {
-            cat("Status {req_obj$status_code}. Too many errors, breaking…")
+            cat(glue("Status {req_obj$status_code}. ",
+                     "Request took {round(t2-t1, 2)} seconds. ",
+                     "Too many errors, breaking…"
+                     )
+                )
             break
         }
     } else {
         # reset error count if request successful
+            cat(glue("Status {req_obj$status_code}. ",
+                     "Request took {round(t2-t1, 2)} seconds. "
+                     ),
+                "\n"
+                )
         error_count <- 0
     }
     
     
-    ## extract only class `column-wide`, which contains all URLs
-    column_wide <- content(req_obj) %>% 
-        html_node(".column-wide")
+    # extract URLs, titles, etc., then add medium and date from archive URLs 
+    # dataframe and add to URLs dataframes list, skip if data frame is empty
+    url_df <- extract_urls(req_obj, archive_urls_df[[i, "medium"]])
+
+        
+    # update scraped status
+    archive_urls_df[[i, "scraped"]] <- T
+
+    # skip rest if no content, otherwise add medium and date, and add to 
+    # list of dataframes
+    if (is.null(url_df)){next}
     
+    url_df$medium <- archive_urls_df[[i, "medium"]]
+    url_df$date <- archive_urls_df[[i, "date"]]
+    url_df_list[[url]] <- url_df
+
     
-    # save raw html to list in case there are any unforeseen parsing issues
-    html_raw_list[url] <- ifelse(http_error(req_obj),
-                                 req_obj$status_code,
-                                 as.character(column_wide)
-                                 )
-    
-    
-    # 
-    
+    # save progress every 250 iterations
+    if (i %% 250 == 0) {
+        cat("\n\n Saving progress… \n\n")
+        write_rds(url_df_list, "url_df_list.rds")
+        write_rds(archive_urls_df, "archive_urls_df.rds")
+    }
 }
