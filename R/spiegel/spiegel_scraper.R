@@ -201,10 +201,30 @@ for (i in 1:nrow(archive_urls_df)) {
     url_df_list[[url]] <- url_df
 
     
-    # save progress every 250 iterations
-    if (i %% 250 == 0) {
+    # save progress every 250 iterations, and on last iteration
+    if (i %% 250 == 0 || i <= nrow(archive_urls_df)) {
         cat("\n\n Saving progress… \n\n")
         write_rds(url_df_list, "url_df_list.rds")
         write_rds(archive_urls_df, "archive_urls_df.rds")
     }
 }
+
+
+
+
+
+
+
+
+
+
+
+#-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()
+#
+# clean up data frame of URLs and get sample ------------------------------
+#
+#-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()-()
+
+
+url_df <- bind_rows(url_df_list) %>% 
+    
