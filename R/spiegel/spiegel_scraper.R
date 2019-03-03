@@ -370,4 +370,27 @@ if (file.exists("cont_urls_df_samp.csv.gz")) {
 # 
 # Scrape content using subset of URL data.
 
+df_nrow <- nrow(cont_urls_df_samp)
+groups_vec <- rep(1:4, each = ceiling(df_nrow/4))[1:df_nrow]
+
+cont_urls_df_samp$group <- groups_vec
+
+
+# Generate if groups_dfs directory doesn't.
+if (!dir.exists("groups_dfs/")) {
+    
+    dir.create("groups_dfs/")
+    
+    
+    # write each group as RDS to groups_dfs folder
+    for (g in 1:4) {
+        cont_urls_df_samp %>% 
+            filter(group == g) %>% 
+            write_rds(glue("groups_dfs/group_{g}_urls_df.rds"))
+    }
+    
+    
+    # write vector with status of each group
+    write_rds(c(g1=F, g2=F, g3=F, g4=F), glue("groups_dfs/groups_status.rds"))
+}
 
