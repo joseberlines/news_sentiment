@@ -370,19 +370,18 @@ if (file.exists("cont_urls_df_samp.csv.gz")) {
 # 
 # Scrape content using subset of URL data.
 
-df_nrow <- nrow(cont_urls_df_samp)
-groups_vec <- rep(1:4, each = ceiling(df_nrow/4))[1:df_nrow]
 
-cont_urls_df_samp$group <- groups_vec
-
-
-# Generate if groups_dfs directory doesn't.
-if (!dir.exists("groups_dfs/")) {
+# Create directory for groups, group dataframes, and group status.
+if (!dir.exists("groups_dfs/")){
     
+    # Generate scrape groups and add to cont_urls_df_samp. Create directory.
+    df_nrow <- nrow(cont_urls_df_samp)
+    groups_vec <- rep(1:4, each = ceiling(df_nrow/4))[1:df_nrow]
+    cont_urls_df_samp$group <- groups_vec
     dir.create("groups_dfs/")
     
     
-    # write each group as RDS to groups_dfs folder
+    # Write each group as RDS to groups_dfs folder
     for (g in 1:4) {
         cont_urls_df_samp %>% 
             filter(group == g) %>% 
@@ -390,7 +389,26 @@ if (!dir.exists("groups_dfs/")) {
     }
     
     
-    # write vector with status of each group
+    # Write vector with status of each group.
     write_rds(c(g1=F, g2=F, g3=F, g4=F), glue("groups_dfs/groups_status.rds"))
+    
+    rm(df_nrow, g, groups_vec, cont_urls_df_samp)
 }
 
+
+
+group_status <- read_rds("groups_dfs/groups_status.rds")
+group <- names(which(!group_status)[1])
+groups <- c(g1 = "group_1", g2 = "group_2", g3 = "group_3", g4 = "group_4")
+
+if (is.na(group)) {
+    cat("All groups are active.")
+} else {
+    cat(paste0("Starting ", groups[group], "…"))
+    group_status[group] <- TRUE
+    write_rds(group_status, "groups_dfs/groups_status.rds")
+    rm(group_status)
+    
+    fp <- paste0("groups_dfs/", str_subset(dir("groups_dfs/"), groups[group]))
+    url_df <- read_rds(fp)
+}
