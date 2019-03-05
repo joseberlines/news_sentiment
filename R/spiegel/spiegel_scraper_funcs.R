@@ -5,8 +5,12 @@
 #\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/\/
 
 
+
+
+
+# Extracts URLs from archive pages. Used in spiegel_scraper.R.
 extract_urls <- function(req_obj, medium) {
-    ## extract only class `column-wide`, which contains all URLs
+    # extract only class `column-wide`, which contains all URLs
     column_wide <- content(req_obj) %>% html_node(".column-wide")
     
     # extract link nodes, then extract titles and urls from link nodes,
@@ -57,7 +61,7 @@ extract_urls <- function(req_obj, medium) {
         categ_time = categ_times
     )
     
-    # return
+    # return dataframe
     out_df
 }
 
@@ -71,33 +75,48 @@ extract_urls <- function(req_obj, medium) {
 
 
 
-extract_content <- function(raw_html) {
+extract_content <- function(raw_article) {
     
-    raw_article <- raw_html %>% 
-        html_node(".spArticleContent")
-    
-    scripts <- raw_article %>% 
-        html_nodes("script")
-    
-    xml_remove(scripts)
-    
-    article <- raw_html %>% 
-        html_nodes(".article-section p") %>% 
+    # drop HTML using regex so <i> remains, which indicates source
+    article <- raw_article %>% 
+        html_nodes("#js-article-column p") %>% 
         as.character() %>% 
+        # remove paragraph HTML
         str_remove_all("</?p>") %>% 
         str_trim() %>% 
+        # remove section headings
+        str_remove("^<b>.*</b>$") %>% 
+        # remove link HTML
+        str_remove_all("</?a.*?>") %>% 
+        # drop empty strings
         .[nchar(.) > 0]
     
+    
+    # Return NULL if no content.
+    if (length(article) == 0) {
+        return(NULL)
+    }
+    
+    
+    # If final element of article vector contains <i> it is a source. Assign to
+    # source, then subset article to exclude source. Source is otherwise NA.
     if (str_detect(article[length(article)], "</?i>")){
         source <- str_remove_all(article[length(article)], "</?i>")
-        article <- paste(article[1:(length(article)-1)], collapse = "\n")
+        article <- article[1:(length(article)-1)]
     } else {
         source <- NA_character_
     }
+    
+    
+    # Collapse article into single character string with line breaks.
+    article <- paste(article[1:(length(article)-1)], collapse = "\n")
 
+    
+    # Extract headline, headline intro, article intro, timestamp, and author.
     headline <- raw_article %>% 
         html_nodes(".headline") %>% 
-        html_text()
+        html_text() %>% 
+        paste(., collapse = "\n")
     
     headline_intro <- raw_article %>% 
         html_nodes(".headline-intro") %>% 
@@ -116,6 +135,9 @@ extract_content <- function(raw_html) {
         html_nodes(".author") %>% 
         html_text()
     
+    
+    # Put all extracted into list, iterate over list and replace anything useless
+    # with NA, then collpase into dataframe and return
     elem_list <- list(headline = headline,
                       headline_intro = headline_intro,
                       article_intro = article_intro,
@@ -126,11 +148,16 @@ extract_content <- function(raw_html) {
                       )
     
     for (n in names(elem_list)) {
-        if(length(elem_list[[n]]) == 0 || nchar(elem_list[[n]]) == 0){
+        elem <- elem_list[[n]]
+        if(length(elem) == 0 || nchar(elem) == 0 || is.na(elem)){
             elem_list[[n]] <- NA_character_
         }
     }
     
-    out_df <- bind_cols(elem_list)
+    cont_df <- bind_cols(elem_list)
+    
+    # return dataframe
+    cont_df
+    
 }
 

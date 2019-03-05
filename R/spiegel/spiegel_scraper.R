@@ -317,42 +317,44 @@ if (!dir.exists("cont_urls_df_full/")){
 # Remove some unnecessary bits like photo series, paid content, etc., and generate
 # subset of URLs containing 1/6 of each category.
 
-if (file.exists("cont_urls_df_samp.csv.gz")) {
-    cont_urls_df_samp <-
-        read_csv2("cont_urls_df_samp.csv.gz", col_types = "ccccTcl")
-} else {
-    if (!("cont_urls_df" %in% ls())) {
-        
-        cont_urls_df <- tibble()
-        
-        for (df in dir("cont_urls_df_full/")){
-            cont_urls_df <- bind_rows(cont_urls_df,
-                      read_csv2(paste0("cont_urls_df_full/", df),
-                                col_types = "ccccTc"
-                                )
-                      )
+if (!dir.exists("groups_dfs/")){
+    if (file.exists("cont_urls_df_samp.csv.gz")) {
+        cont_urls_df_samp <-
+            read_csv2("cont_urls_df_samp.csv.gz", col_types = "ccccTcl")
+    } else {
+        if (!("cont_urls_df" %in% ls())) {
+            
+            cont_urls_df <- tibble()
+            
+            for (df in dir("cont_urls_df_full/")){
+                cont_urls_df <- bind_rows(cont_urls_df,
+                          read_csv2(paste0("cont_urls_df_full/", df),
+                                    col_types = "ccccTc"
+                                    )
+                          )
+            }
+            
+            rm(df)
         }
         
-        rm(df)
+        
+        # Drop any photo/video as they have little to no text content. Remove paid
+        # content ("spiegel+") as well. Take sample as 1/6 of each category, then 
+        # ungroup and shuffle dataframe. Then write sample dataframe to disk
+        set.seed(3902)
+        
+        cont_urls_df_samp <- cont_urls_df %>% 
+            filter(medium == "article" & categ != "spiegel+") %>% 
+            group_by(categ) %>% 
+            sample_frac(1/6) %>% 
+            ungroup() %>% 
+            sample_frac(1) %>% 
+            mutate(scraped = F)
+        
+        write_csv2(cont_urls_df_samp, gzfile("cont_urls_df_samp.csv.gz"))
+        
+        rm(cont_urls_df)
     }
-    
-    
-    # Drop any photo/video as they have little to no text content. Remove paid
-    # content ("spiegel+") as well. Take sample as 1/6 of each category, then 
-    # ungroup and shuffle dataframe. Then write sample dataframe to disk
-    set.seed(3902)
-    
-    cont_urls_df_samp <- cont_urls_df %>% 
-        filter(medium == "article" & categ != "spiegel+") %>% 
-        group_by(categ) %>% 
-        sample_frac(1/6) %>% 
-        ungroup() %>% 
-        sample_frac(1) %>% 
-        mutate(scraped = F)
-    
-    write_csv2(cont_urls_df_samp, gzfile("cont_urls_df_samp.csv.gz"))
-    
-    rm(cont_urls_df)
 }
 
 
@@ -396,27 +398,115 @@ if (!dir.exists("groups_dfs/")){
 }
 
 
-
-group_status <- read_rds("groups_dfs/groups_status.rds")
-group <- names(which(!group_status)[1])
-groups <- c(g1 = "group_1", g2 = "group_2", g3 = "group_3", g4 = "group_4")
-
-if (is.na(group)) {
-    cat("All groups are active.")
-} else {
-    cat(paste0("Starting ", groups[group], "…"))
-    group_status[group] <- TRUE
-    write_rds(group_status, "groups_dfs/groups_status.rds")
-    rm(group_status)
+if (!("group_status" %in% ls())){
     
-    file_path_urls_df <- paste0("groups_dfs/",
-                                str_subset(dir("groups_dfs/"),
-                                           groups[group]
-                                           )
-                                )
-    url_df <- read_rds(file_path_urls_df)
+    group_status <- read_rds("groups_dfs/groups_status.rds")
+    group <- names(which(!group_status)[1])
+    groups <- c(g1 = "group_1", g2 = "group_2", g3 = "group_3", g4 = "group_4")
+    
+    
+    if (is.na(group)) {
+        cat("All groups are active.")
+    } else {
+        cat("\n\n", paste0("Starting ", groups[group], "…\n\n"), "\n\n")
+        group_status[group] <- TRUE
+        write_rds(group_status, "groups_dfs/groups_status.rds")
+        
+        file_path_urls_df <- paste0("groups_dfs/",
+                                    str_subset(dir("groups_dfs/"),
+                                               paste0(groups[group], "_urls")
+                                               )
+                                    )
+        url_df <- read_rds(file_path_urls_df)
+    }
 }
 
-for (i in seq_along(url_df$url)){}
-    req_obj <- GET(url_df[[i, "url"]], user_agent(user))
+
+
+
+# get list of user agents
+if (!("user_agents" %in% ls())) {
+    user_agents <- read_lines("../../user_agents.txt")
 }
+
+# create vector to keep track of issues
+if (!("cont_raw_list" %in% ls())) {
+    parse_issues_vec <- rep(FALSE, nrow(url_df))
+    
+    cont_df_list <- vector(mode = "list", length = nrow(url_df))
+    names(cont_df_list) <- url_df$url
+    
+    cont_raw_list <- vector(mode = "list", length = nrow(url_df))
+    names(cont_raw_list) <- url_df$url
+}
+
+
+for (i in seq_along(url_df$url)){
+    
+    # Skip URLs that have already been scraped.
+    if (url_df[[i, "scraped"]]) {
+        next
+    }
+    
+    
+    # Print status, send request, then print request status + details. 
+    cat(glue("Scraping {i} of {nrow(url_df)}… "))
+    
+    t1 <- Sys.time()
+    req_obj <- GET(url_df[[i, "url"]], user_agent(sample(user_agents, 1)))
+    t2 <- Sys.time()
+    
+    cat(glue("Status {status_code(req_obj)}.",
+             " Request took {round(t2-t1, 2)} seconds."
+             ),
+        "\n"
+        )
+    
+    
+    # Update scraped-status and continue if 404.
+    if (status_code(req_obj) == 404){
+        url_df[[i, "scraped"]] <- TRUE
+        next
+    }
+    
+    
+    # Extract node that contains all relevant info and remove superfluous nodes
+    # to save disk space.
+    raw_article <- content(req_obj) %>% 
+        html_node(".spArticleContent")
+    
+    scripts <- raw_article %>% 
+        html_nodes("script")
+    
+    xml_remove(scripts)
+    
+    social <- raw_article %>% 
+        html_nodes(".social-bar")
+    
+    xml_remove(social)
+    
+    iframes <- raw_article %>% 
+        html_nodes("iframe")
+    
+    xml_remove(iframes)
+    
+    
+    # Add raw HTML to list as backup, i.e. to avoid rescraping in case of error.
+    # Then use extract_content function to extract dataframe of info. Add
+    # dataframe to cont_df_list.
+    cont_raw_list[[i]] <- as.character(raw_article)
+    
+    cont_df_list[[i]] <- extract_content(raw_article)
+    
+    
+    # Update scraped status. Save progress every 250 requests.
+    url_df[[i, "scraped"]] <- TRUE
+    
+    if (i %% 250 == 0){
+        write_rds(url_df, file_path_urls_df)
+        write_rds(cont_raw_list, glue("groups_dfs/{groups[group]}_raw_list.rds"))
+        write_rds(cont_df_list, glue("groups_dfs/{groups[group]}_df_list.rds"))
+    }
+}
+
+
