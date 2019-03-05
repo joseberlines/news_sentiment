@@ -115,4 +115,22 @@ extract_content <- function(raw_html) {
     author <- raw_article %>% 
         html_nodes(".author") %>% 
         html_text()
+    
+    elem_list <- list(headline = headline,
+                      headline_intro = headline_intro,
+                      article_intro = article_intro,
+                      article = article,
+                      source = source,
+                      timestamp = timestamp,
+                      author = author
+                      )
+    
+    for (n in names(elem_list)) {
+        if(length(elem_list[[n]]) == 0 || nchar(elem_list[[n]]) == 0){
+            elem_list[[n]] <- NA_character_
+        }
+    }
+    
+    out_df <- bind_cols(elem_list)
 }
+
