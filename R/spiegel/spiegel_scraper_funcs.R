@@ -60,3 +60,59 @@ extract_urls <- function(req_obj, medium) {
     # return
     out_df
 }
+
+
+
+
+
+
+
+
+
+
+
+extract_content <- function(raw_html) {
+    
+    raw_article <- raw_html %>% 
+        html_node(".spArticleContent")
+    
+    scripts <- raw_article %>% 
+        html_nodes("script")
+    
+    xml_remove(scripts)
+    
+    article <- raw_html %>% 
+        html_nodes(".article-section p") %>% 
+        as.character() %>% 
+        str_remove_all("</?p>") %>% 
+        str_trim() %>% 
+        .[nchar(.) > 0]
+    
+    if (str_detect(article[length(article)], "</?i>")){
+        source <- str_remove_all(article[length(article)], "</?i>")
+        article <- paste(article[1:(length(article)-1)], collapse = "\n")
+    } else {
+        source <- NA_character_
+    }
+
+    headline <- raw_article %>% 
+        html_nodes(".headline") %>% 
+        html_text()
+    
+    headline_intro <- raw_article %>% 
+        html_nodes(".headline-intro") %>% 
+        html_text()
+    
+    article_intro <- raw_article %>% 
+        html_nodes(".article-intro") %>% 
+        html_text()
+    
+    timestamp <- raw_article %>% 
+        html_nodes(".timeformat") %>% 
+        html_attr("datetime") %>% 
+        as_datetime(tz = "CET")
+    
+    author <- raw_article %>% 
+        html_nodes(".author") %>% 
+        html_text()
+}

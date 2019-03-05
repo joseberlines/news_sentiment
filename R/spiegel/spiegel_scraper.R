@@ -409,6 +409,14 @@ if (is.na(group)) {
     write_rds(group_status, "groups_dfs/groups_status.rds")
     rm(group_status)
     
-    fp <- paste0("groups_dfs/", str_subset(dir("groups_dfs/"), groups[group]))
-    url_df <- read_rds(fp)
+    file_path_urls_df <- paste0("groups_dfs/",
+                                str_subset(dir("groups_dfs/"),
+                                           groups[group]
+                                           )
+                                )
+    url_df <- read_rds(file_path_urls_df)
+}
+
+for (i in seq_along(url_df$url)){}
+    req_obj <- GET(url_df[[i, "url"]], user_agent(user))
 }
