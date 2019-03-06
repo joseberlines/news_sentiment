@@ -503,6 +503,7 @@ for (i in seq_along(url_df$url)){
     url_df[[i, "scraped"]] <- TRUE
     
     if (i %% 250 == 0){
+        cat("\n\nSaving progress…\n\n\n")
         write_rds(url_df, file_path_urls_df)
         write_rds(cont_raw_list, glue("groups_dfs/{groups[group]}_raw_list.rds"))
         write_rds(cont_df_list, glue("groups_dfs/{groups[group]}_df_list.rds"))
@@ -510,3 +511,17 @@ for (i in seq_along(url_df$url)){
 }
 
 
+# Compress files
+cat("\n\nCompressing…\n\n\n")
+write_rds(url_df,
+          file_path_urls_df,
+          compress = "gz"
+          )
+write_rds(cont_raw_list,
+          glue("groups_dfs/{groups[group]}_raw_list.rds"),
+          compress = "gz"
+          )
+write_rds(cont_df_list,
+          glue("groups_dfs/{groups[group]}_df_list.rds"), 
+          compress = "gz"
+          )
